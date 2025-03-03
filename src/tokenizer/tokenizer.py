@@ -1,6 +1,7 @@
 import re
 
 SPECIAL_CHARACTERS = r'([,.:;?_!"()\']|--|\s)'
+UNKNOWN_SYMBOL = "<unknown>"
 
 
 def raw_text_to_list_of_words(text):
@@ -30,6 +31,10 @@ class VocabularyBuilder:
             with open(path, "r", encoding="utf-8") as f:
                 raw_text = f.read()
                 self._build_vocabulary_for_single_text(raw_text)
+        
+        # add special characters
+        self.vocabulary.append("<|unknown|>")
+        self.vocabulary.append("<|end_of_text|>")
                 
 
 class SimpleTokenizerV1:
@@ -44,6 +49,8 @@ class SimpleTokenizerV1:
 
     def encode(self, text):
         words = raw_text_to_list_of_words(text)
+        words = [w if w in self.str_to_int else "<|unknown|>" 
+                 for w in words]
         ids = [self.str_to_int[s] for s in words]
         return ids
 
@@ -62,14 +69,9 @@ def test():
 
     # test tokenizer
     tk = SimpleTokenizerV1(vb.vocabulary)
-    path = "/Users/andylee/Projects/llm-from-scratch/data/the-verdict.txt"
-    with open(path, "r", encoding="utf-8") as f:
-        raw_text = f.read()
-        raw_text = raw_text[:400]
-        print("raw_text : ", raw_text)
-        enocded = tk.encode(raw_text)
-        print("tokenized: ", tk.encode(raw_text))
-        print("characters_decoded " , tk.decode(enocded))
+    path = text_sources[0]
+    text = "hello i like tea"
+    print(tk.encode(text))
 
 
 if __name__ == "__main__":
