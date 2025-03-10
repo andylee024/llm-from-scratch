@@ -112,34 +112,50 @@ def test():
     # inputs
     text_sources = ["/Users/andylee/Projects/llm-from-scratch/data/the-verdict.txt"]
     path = text_sources[0]
-    
-    # test vocabulary builder
-    vb = VocabularyBuilder()
-    vb.build_vocabulary(text_sources)
-
-    # test tokenizer
-    # tk = SimpleTokenizerV1(vb.vocabulary)
-    tk = tiktoken.get_encoding("gpt2")
-
-    # text1 = "Hello, do you like tea?"
-    # text2 = "In the sunlit terraces of the palace."
-    # text = " <|endoftext|> ".join((text1, text2))
-    # print(text)
-
-    # test dataset loader
     with open(path, "r", encoding='utf-8') as f:
         raw_text = f.read()
+    
+    # test vocabulary builder
+    # vb = VocabularyBuilder()
+    # vb.build_vocabulary(text_sources)
 
-    dataloader = create_dataloader_v1(
-        raw_text, batch_size=1, max_length=4, stride=1, shuffle=False
-    )
+    # test dataset loader
+    max_length = 4
+    batch_size = 8
+    stride = 2
+    dataloader = create_dataloader_v1(raw_text, 
+                                      batch_size=batch_size, 
+                                      max_length=max_length, 
+                                      stride=stride, 
+                                      shuffle=False)
+
+    # tst embedding layer
+    vocab_size = 50257
+    output_dim = 256
+    context_length = max_length
+    torch.manual_seed(123)
+
+    # setup token & positional embedding layers
+    token_embedding_layer = torch.nn.Embedding(vocab_size, output_dim)
+    pos_embedding_layer = torch.nn.Embedding(context_length, output_dim) 
+
+    # load data
     data_iter = iter(dataloader)
-    first_batch = next(data_iter)
-    second_batch = next(data_iter)
-    third_batch = next(data_iter)
-    print(first_batch)
-    print(second_batch)
-    print(third_batch)
+    inputs, targets = next(data_iter)
+    print("Token IDs:\n", inputs)
+    print("\nInputs shape:\n", inputs.shape)
+
+    # create embedings
+    token_embeddings = token_embedding_layer(inputs)
+    pos_embeddings = pos_embedding_layer(torch.arange(context_length)) 
+    input_embeddings = token_embeddings + pos_embeddings
+    print(input_embeddings.shape)
+
+
+    # embed the inputs
+
+
+
     
 
 if __name__ == "__main__":
