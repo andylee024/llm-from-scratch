@@ -1,4 +1,4 @@
-
+import tiktoken
 import torch
 import torch.nn as nn
 
@@ -13,16 +13,6 @@ class GPTConfig:
     dropout: float = 0.1
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
-
-GPT_CONFIG_124M = {
-    "vocab_size": 50257,     # Vocabulary size
-    "context_length": 256,  # Context length
-    "emb_dim": 768, # Number of embedding dimensions
-    "n_heads": 12, # Number of attention heads
-    "n_layers": 12, # Number of transformer layers
-    "drop_rate": 0.1, # Dropout rate
-    "qkv_bias": False# Query-Key-Value bias
-}
 
 class GPTModel(nn.Module):
 
@@ -103,9 +93,19 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
 
     return idx
 
+def text_to_token_ids(text, tokenizer):
+    encoded = tokenizer.encode(text, allowed_special={'<|endoftext|>'})
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0)
+    return encoded_tensor
+
+def token_ids_to_text(token_ids, tokenizer):
+    flat = token_ids.squeeze(0)
+    return tokenizer.decode(flat.tolist())
+
 if __name__ == "__main__":
     config = GPTConfig()
     model = GPTModel(config)
+    tokenizer = tiktoken
 
     # Create test input (batch_size=1, seq_len=context_size)
     idx = torch.zeros((1, config.block_size), dtype=torch.long)
@@ -119,8 +119,9 @@ if __name__ == "__main__":
         temperature=0.0,
         top_k=None
     )
-    
+
+    tokenizer = tiktoken.get_encoding("gpt2")
     print("Test generation shape:", generated.shape)
-    print("Sample generated tokens:", generated[0, -10:].tolist())
+    print("Sample generated tokens:", tokenizer.decode(generated[0, -10:].tolist()))
 
 
