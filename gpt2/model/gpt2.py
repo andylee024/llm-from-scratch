@@ -2,6 +2,7 @@ import tiktoken
 import torch
 import torch.nn as nn
 
+from utils.tokenization import text_to_token_ids, token_ids_to_text
 from components.transformer_block import LayerNorm, TransformerBlock
 
 class GPTConfig:
@@ -93,19 +94,10 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
 
     return idx
 
-def text_to_token_ids(text, tokenizer):
-    encoded = tokenizer.encode(text, allowed_special={'<|endoftext|>'})
-    encoded_tensor = torch.tensor(encoded).unsqueeze(0)
-    return encoded_tensor
-
-def token_ids_to_text(token_ids, tokenizer):
-    flat = token_ids.squeeze(0)
-    return tokenizer.decode(flat.tolist())
-
 if __name__ == "__main__":
     config = GPTConfig()
     model = GPTModel(config)
-    tokenizer = tiktoken
+    tokenizer = tiktoken.get_encoding("gpt2")
 
     # Create test input (batch_size=1, seq_len=context_size)
     idx = torch.zeros((1, config.block_size), dtype=torch.long)
@@ -122,6 +114,5 @@ if __name__ == "__main__":
 
     tokenizer = tiktoken.get_encoding("gpt2")
     print("Test generation shape:", generated.shape)
-    print("Sample generated tokens:", tokenizer.decode(generated[0, -10:].tolist()))
-
+    print("Sample generated tokens:", token_ids_to_text(generated[0, -10:].tolist(), tokenizer))
 
