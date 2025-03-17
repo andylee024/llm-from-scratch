@@ -2,8 +2,8 @@ import tiktoken
 import torch
 import torch.nn as nn
 
-from utils.tokenization import text_to_token_ids, token_ids_to_text
-from components.transformer_block import LayerNorm, TransformerBlock
+from gpt2.utils.tokenization import text_to_token_ids, token_ids_to_text
+from gpt2.model.components.transformer_block import LayerNorm, TransformerBlock
 
 class GPTConfig:
     block_size: int = 1024

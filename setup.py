@@ -6,7 +6,8 @@ setup(
     packages=find_packages(),   # Auto-find all packages
     install_requires=[          # Dependencies
         "torch>=1.10.0",
-        "numpy>=1.21.0"
+        "numpy>=1.21.0",
+        "tiktoken"
     ],
     python_requires=">=3.8",    # Python version requirement
 )
