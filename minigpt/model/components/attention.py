@@ -4,7 +4,7 @@ import torch.nn as nn
 class MultiHeadAttention(nn.Module):
     """Implementation of multihead attention w/ parallel matrix processing"""
 
-    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+    def __init__(self, d_in, d_out, block_size, dropout, num_heads, qkv_bias=False):
         super().__init__()
 
         # validate input dimensions
@@ -19,7 +19,7 @@ class MultiHeadAttention(nn.Module):
         self.W_query = nn.Linear(in_features=d_in, out_features=d_out, bias=qkv_bias)
         self.W_key = nn.Linear(in_features=d_in, out_features=d_out, bias=qkv_bias)
         self.W_value = nn.Linear(in_features=d_in, out_features=d_out, bias=qkv_bias)
-        self.register_buffer('mask', torch.triu(torch.ones(context_length, context_length), diagonal=1))
+        self.register_buffer('mask', torch.triu(torch.ones(block_size, block_size), diagonal=1))
 
         # setup dropout
         self.dropout = nn.Dropout(dropout)

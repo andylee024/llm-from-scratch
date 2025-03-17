@@ -7,7 +7,7 @@ from minigpt.model.components.transformer_block import LayerNorm, TransformerBlo
 
 class GPTConfig:
     block_size: int = 1024
-    vocab_size: int = 50304 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    vocab_size: int = 50257 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
@@ -24,7 +24,7 @@ class GPTModel(nn.Module):
         self.drop_emb = nn.Dropout(config.dropout)
         self.trf_blocks = nn.Sequential(*[TransformerBlock({
             "vocab_size": config.vocab_size,
-            "context_length": config.block_size,
+            "block_size": config.block_size,
             "emb_dim": config.n_embd,
             "n_heads": config.n_head,
             "n_layers": config.n_layer,
@@ -115,4 +115,3 @@ if __name__ == "__main__":
     tokenizer = tiktoken.get_encoding("gpt2")
     print("Test generation shape:", generated.shape)
     print("Sample generated tokens:", token_ids_to_text(generated[0, -10:], tokenizer))
-
