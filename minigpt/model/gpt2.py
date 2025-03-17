@@ -2,8 +2,8 @@ import tiktoken
 import torch
 import torch.nn as nn
 
-from gpt2.utils.tokenization import text_to_token_ids, token_ids_to_text
-from gpt2.model.components.transformer_block import LayerNorm, TransformerBlock
+from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
+from minigpt.model.components.transformer_block import LayerNorm, TransformerBlock
 
 class GPTConfig:
     block_size: int = 1024
@@ -114,5 +114,5 @@ if __name__ == "__main__":
 
     tokenizer = tiktoken.get_encoding("gpt2")
     print("Test generation shape:", generated.shape)
-    print("Sample generated tokens:", token_ids_to_text(generated[0, -10:].tolist(), tokenizer))
+    print("Sample generated tokens:", token_ids_to_text(generated[0, -10:], tokenizer))
 
