@@ -82,14 +82,23 @@ class GPTModel(nn.Module):
         self.final_norm = LayerNorm(config.n_embd)
         self.out_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
+
+    def get_num_params(self, non_embedding=True):
+        """Return number of parameters, non_embedding subtracts embeddings parameters."""
+        n_params = sum(p.numel() for p in self.parameters())
+        if non_embedding:
+            n_params -= self.tok_emb.weight.numel()
+            n_params -= self.pos_emb.weight.numel()
+        return n_params
+
+
     def forward(self, x, targets=None):
 
-        # read input X
-        _, seq_len = x.shape
+        _, block_size = x.shape
 
         # map X to embedding space
         tok_embeds = self.tok_emb(x)
-        pos_embeds = self.pos_emb(torch.arange(seq_len, device=x.device))
+        pos_embeds = self.pos_emb(torch.arange(block_size, device=x.device))
         x = tok_embeds + pos_embeds
         
         # process X through transformer blocks
@@ -130,17 +139,17 @@ class GPTModel(nn.Module):
 
 
 if __name__ == "__main__":
-    # setup
+
+    # setup model
     tokenizer = tiktoken.get_encoding("gpt2")
     model = create_gpt2_model('gpt2-small')
-    print(f"Created GPT-2 model with {sum(p.numel() for p in model.parameters())/1e6:.1f}M parameters")
-    
-    # Sample prompt
+    print(f"GPT2 params : {model.get_num_params()}")
+
+    # input prompt 
     prompt = "Once upon a time in a land far away,"
-    print(f"Prompt: {prompt}")
-    
-    # Generate text
-    print("\nMethod 1: Using model.generate()")
+    print(f"prompt : {prompt}")
+
+    # generate tokens 
     input_ids = text_to_token_ids(prompt, tokenizer)
     generated = model.generate(
         idx=input_ids,
@@ -149,7 +158,5 @@ if __name__ == "__main__":
         temperature=0.8,
         top_k=40
     )
-    
-    # Convert to text and print
     generated_text = token_ids_to_text(generated, tokenizer)
     print(f"Generated text:\n{generated_text}")
