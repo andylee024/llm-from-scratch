@@ -103,8 +103,7 @@ def generate_sample(model, x, max_new_tokens=100, block_size=25):
 
 if __name__ == "__main__":
 
-    # data_path = "data/the-verdict.txt"
-    data_path = "/Users/andylee/Projects/llm-from-scratch/data/the-verdict.txt"
+    data_path = "data/the-verdict.txt"
 
     tokenizer = tiktoken.get_encoding("gpt2")
 
