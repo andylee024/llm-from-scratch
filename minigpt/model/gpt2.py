@@ -6,13 +6,42 @@ from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 from minigpt.model.components.transformer_block import LayerNorm, TransformerBlock
 
 class GPTConfig:
-    block_size: int = 1024
-    vocab_size: int = 50257 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
-    dropout: float = 0.1
-    bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    """Configuration class for GPT model parameters."""
+    
+    def __init__(
+        self,
+        block_size: int = 1024,
+        vocab_size: int = 50257,  # GPT-2 vocab_size of 50257
+        n_layer: int = 12,
+        n_head: int = 12,
+        n_embd: int = 768,
+        dropout: float = 0.1,
+        bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    ):
+        self.block_size = block_size
+        self.vocab_size = vocab_size
+        self.n_layer = n_layer
+        self.n_head = n_head
+        self.n_embd = n_embd
+        self.dropout = dropout
+        self.bias = bias
+    
+    @classmethod
+    def from_dict(cls, config_dict):
+        """Create a config from a dictionary of parameters."""
+        return cls(**config_dict)
+    
+    def to_dict(self):
+        """Convert config to a dictionary."""
+        return {
+            'block_size': self.block_size,
+            'vocab_size': self.vocab_size,
+            'n_layer': self.n_layer,
+            'n_head': self.n_head,
+            'n_embd': self.n_embd,
+            'dropout': self.dropout,
+            'bias': self.bias,
+        }
 
 
 class GPTModel(nn.Module):
