@@ -5,7 +5,7 @@ import torch
 
 from minigpt.data.dataloaders import create_dataloader
 from minigpt.utils.evaluation import evaluate_dataset_loss
-from minigpt.model.gpt2 import GPTConfig, GPTModel, generate
+from minigpt.model.gpt2 import create_gpt2_model 
 from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 
 
@@ -106,7 +106,6 @@ if __name__ == "__main__":
     # data_path = "data/the-verdict.txt"
     data_path = "/Users/andylee/Projects/llm-from-scratch/data/the-verdict.txt"
 
-    gpt_config = GPTConfig(block_size=256)
     tokenizer = tiktoken.get_encoding("gpt2")
 
     train_loader, validation_loader = setup_dataloaders(file_paths=[data_path],
@@ -116,7 +115,7 @@ if __name__ == "__main__":
                                                         stride=256,
                                                         train_ratio=0.85)
     
-    model = GPTModel(gpt_config)
+    model = create_gpt2_model("gpt2-small")
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
