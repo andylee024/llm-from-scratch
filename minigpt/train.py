@@ -144,7 +144,7 @@ if __name__ == "__main__":
         optimizer=optimizer,
         train_loader=train_loader,
         validation_loader=validation_loader,
-        num_epochs=10,
+        num_epochs=1000,
         eval_freq=5,
         device=device
     )
