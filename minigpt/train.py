@@ -52,7 +52,8 @@ def run_training(model,
                  train_loader,
                  validation_loader,
                  num_epochs, 
-                 eval_freq):
+                 eval_freq, 
+                 device):
 
     train_losses, validation_losses = [], []
     
@@ -60,6 +61,8 @@ def run_training(model,
         model.train()
 
         for x_batch, y_batch in train_loader:
+            x_batch = x_batch.to(device)
+            y_batch = y_batch.to(device)
             optimizer.zero_grad()
             _, loss = model(x=x_batch, targets=y_batch)
             loss.backward()
@@ -103,39 +106,50 @@ def generate_sample(model, x, max_new_tokens=100, block_size=25):
 
 if __name__ == "__main__":
 
+    # set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    # load data 
     data_path = "data/the-verdict.txt"
-
     tokenizer = tiktoken.get_encoding("gpt2")
-
     train_loader, validation_loader = setup_dataloaders(file_paths=[data_path],
                                                         tokenizer=tokenizer,
                                                         batch_size=4, 
                                                         max_length=256,
                                                         stride=256,
                                                         train_ratio=0.85)
-    
-    model = create_gpt2_model("gpt2-small")
 
+    # load model
+    model = create_gpt2_model("gpt2-small")
+    model.to(device)
+
+    # load optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=0.0004, 
         weight_decay=0.1
     )
 
-    sample_pre_training = generate_sample(model, text_to_token_ids("hello, how's it going?", tokenizer))
+    # run training
+    input_ids = text_to_token_ids("hello, how's it going?", tokenizer).to_device(device)
+    
+    print("Sample before training:")
+    sample_pre_training = generate_sample(model, input_ids)
+    text_pre_training = token_ids_to_text(sample_pre_training[0], tokenizer)
+    print(f"sample_post_training : \n \n {text_pre_training}")
+
     run_training(
         model=model,
         optimizer=optimizer,
         train_loader=train_loader,
         validation_loader=validation_loader,
         num_epochs=10,
-        eval_freq=5
+        eval_freq=5,
+        device=device
     )
-    sample_post_training = generate_sample(model, text_to_token_ids("hello, how's it going?", tokenizer))
 
-    # Convert token IDs back to text and print samples
-    print("Sample before training:")
-    print(token_ids_to_text(sample_pre_training[0], tokenizer))
-    
-    print("\nSample after training:")
-    print(token_ids_to_text(sample_post_training[0], tokenizer))
+    print("Sample post training:")
+    sample_post_training = generate_sample(model, input_ids)
+    text_post_training = token_ids_to_text(sample_post_training[0], tokenizer)
+    print(f"sample_post_training : \n \n {text_post_training}")
