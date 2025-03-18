@@ -132,7 +132,7 @@ if __name__ == "__main__":
     )
 
     # run training
-    input_ids = text_to_token_ids("hello, how's it going?", tokenizer).to_device(device)
+    input_ids = text_to_token_ids("hello, how's it going?", tokenizer).to(device)
     
     print("Sample before training:")
     sample_pre_training = generate_sample(model, input_ids)
