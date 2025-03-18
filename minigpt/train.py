@@ -46,43 +46,23 @@ def setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, strid
     return train_loader, val_loader
 
 
-def run_training():
-    pass
-
-def train_epoch(data_loader, optimizer, model):
-
-    for epoch in range(num_epochs):
+def run_training(model,
+                 optimizer,
+                 data_loader,
+                 num_epochs):
+    
+    for epoch_idx in range(num_epochs):
         model.train()
 
-        # iterate through training batches 
-        for input_batch, target_batch in train_loader:
-
+        for x_batch, y_batch in data_loader:
             optimizer.zero_grad()
-            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            _, loss = model(x=x_batch, targets=y_batch)
             loss.backward()
             optimizer.step()
+        
+        # Print the loss for the epoch
+        print(f"Epoch {epoch_idx+1}, Loss: {loss.item():.4f}")
 
-            optimizer.zero_grad()
-            loss = calc_loss_batch(input_batch, target_batch, model, device)
-            loss.backward()
-            optimizer.step()
-
-            tokens_seen += input_batch.numel()
-            global_step += 1
-
-            # print losses based on eval_freq
-            if global_step % eval_freq == 0:
-                train_loss, val_loss = evaluate_model(model, train_loader, val_loader, device, eval_iter)
-                train_losses.append(train_loss)
-                val_losses.append(val_loss)
-                track_tokens_seen.append(tokens_seen)
-                print(f"Ep {epoch+1} (Step {global_step:06d}): Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
-
-        # generate new token predictions after each epoch 
-        generate_and_print_sample(model, tokenizer, device, start_context)
-    
-    return train_losses, val_losses, track_tokens_seen
-    pass
 
 def generate_sample():
     pass
@@ -98,18 +78,13 @@ if __name__ == "__main__":
     tokenizer = tiktoken.get_encoding("gpt2")
 
     # data loaders
-    train_dataloader, validation_dataloader = setup_dataloaders(file_paths=[data_path],
-                                                                tokenizer=tokenizer,
-                                                                batch_size=4, 
-                                                                max_length=256,
-                                                                stride=256,
-                                                                train_ratio=0.85)
+    train_loader, validation_loader = setup_dataloaders(file_paths=[data_path],
+                                                        tokenizer=tokenizer,
+                                                        batch_size=4, 
+                                                        max_length=256,
+                                                        stride=256,
+                                                        train_ratio=0.85)
     
-    for x_batch, y_batch in train_dataloader:
-        print(x_batch.shape)
-        print(y_batch.shape)
-        break
-
     # model 
     model = GPTModel(gpt_config)
 
@@ -119,3 +94,6 @@ if __name__ == "__main__":
         lr=0.0004, 
         weight_decay=0.1
     )
+
+    run_training(model=model, optimizer=optimizer, data_loader=train_loader, num_epochs=4)
+
