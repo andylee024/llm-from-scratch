@@ -2,21 +2,38 @@ import tiktoken
 import torch
 import torch.nn as nn
 
-from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 from minigpt.model.components.transformer_block import LayerNorm, TransformerBlock
+from minigpt.utils.inference import generate_tokens, generate_with_prompt
+from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
+
+
+def create_gpt2_model(model_type):
+    """Factory function to get GPT configuration for different model sizes."""
+    configs = {
+        'gpt2-small': dict(n_layer=12, n_head=12, n_embd=768, block_size=1024, vocab_size=50257, dropout=0.1, bias=True),  # 124M params
+        'gpt2-medium': dict(n_layer=24, n_head=16, n_embd=1024, block_size=1024, vocab_size=50257, dropout=0.1, bias=True),  # 350M params
+        'gpt2-large': dict(n_layer=36, n_head=20, n_embd=1280, block_size=1024, vocab_size=50257, dropout=0.1, bias=True),  # 774M params
+        'gpt2-xl': dict(n_layer=48, n_head=25, n_embd=1600, block_size=1024, vocab_size=50257, dropout=0.1, bias=True),  # 1558M params
+    }
+    
+    if model_type not in configs:
+        raise ValueError(f"Model type {model_type} not found. Available types: {list(configs.keys())}")
+    
+    return GPTModel(GPTConfig(**configs[model_type]))
+    
 
 class GPTConfig:
     """Configuration class for GPT model parameters."""
-    
+
     def __init__(
         self,
-        block_size: int = 1024,
-        vocab_size: int = 50257,  # GPT-2 vocab_size of 50257
-        n_layer: int = 12,
-        n_head: int = 12,
-        n_embd: int = 768,
-        dropout: float = 0.1,
-        bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+        block_size: int,
+        vocab_size: int,  # GPT-2 vocab_size of 50257
+        n_layer: int,
+        n_head: int,
+        n_embd: int,
+        dropout: float,
+        bias: bool  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     ):
         self.block_size = block_size
         self.vocab_size = vocab_size
@@ -25,7 +42,7 @@ class GPTConfig:
         self.n_embd = n_embd
         self.dropout = dropout
         self.bias = bias
-    
+
     @classmethod
     def from_dict(cls, config_dict):
         """Create a config from a dictionary of parameters."""
@@ -48,6 +65,8 @@ class GPTModel(nn.Module):
 
     def __init__(self, config: GPTConfig):
         super().__init__()
+        self.config = config
+
         self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
         self.pos_emb = nn.Embedding(config.block_size, config.n_embd)
         self.drop_emb = nn.Dropout(config.dropout)
@@ -87,96 +106,50 @@ class GPTModel(nn.Module):
             loss = None
         
         return logits, loss
+        
+    def generate(self, idx, max_new_tokens, block_size=None, temperature=0.0, top_k=None, eos_id=None):
+        """Generate text tokens autoregressively"""
+        # Use the default block size if none provided
+        if block_size is None:
+            block_size = self.config.block_size
+        
+        # Delegate to the utility function
+        return generate_tokens(
+            model=self,
+            idx=idx,
+            max_new_tokens=max_new_tokens,
+            block_size=block_size,
+            temperature=temperature,
+            top_k=top_k,
+            eos_id=eos_id
+        )
 
     def from_pretrained(cls, model_type, override_args=None):
         """Load pretrained weights into the GPT class"""
         pass
 
-def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
-    for _ in range(max_new_tokens):
-
-        # get context for prediction
-        idx_conditional = idx[:, -context_size:]
-
-        # generate predictions with model
-        with torch.no_grad():
-            logits = model(idx_conditional)
-
-        # generate logits
-        logits = logits[:, -1, :]
-
-        if top_k is not None:
-            top_logits, _ = torch.topk(logits, top_k)
-            min_val = top_logits[:, -1]
-            logits = torch.where(
-                logits < min_val,
-                torch.tensor(float('-inf')).to(logits.device),
-                logits
-            )
-
-        if temperature > 0.0:
-            logits = logits / temperature
-            probs = torch.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
-
-            if idx_next == eos_id:
-                break
-
-        else:
-            idx_next = torch.argmax(logits, dim=-1, keepdim=True)
-            idx = torch.cat((idx, idx_next), dim=1)
-
-    return idx
 
 if __name__ == "__main__":
-    config = GPTConfig()
-    model = GPTModel(config)
+    # setup
     tokenizer = tiktoken.get_encoding("gpt2")
-
-    # Create test input (batch_size=1, seq_len=context_size)
-    idx = torch.zeros((1, config.block_size), dtype=torch.long)
+    model = create_gpt2_model('gpt2-small')
+    print(f"Created GPT-2 model with {sum(p.numel() for p in model.parameters())/1e6:.1f}M parameters")
     
-    # Test generation
-    generated = generate(
-        model,
-        idx,
-        max_new_tokens=10,
-        context_size=config.block_size,
-        temperature=0.0,
-        top_k=None
+    # Sample prompt
+    prompt = "Once upon a time in a land far away,"
+    print(f"Prompt: {prompt}")
+    
+    # Generate text
+    print("\nMethod 1: Using model.generate()")
+    input_ids = text_to_token_ids(prompt, tokenizer)
+    generated = model.generate(
+        idx=input_ids,
+        max_new_tokens=50,
+        block_size=min(model.config.block_size, 512),  # Use smaller context for faster generation
+        temperature=0.8,
+        top_k=40
     )
-
-    tokenizer = tiktoken.get_encoding("gpt2")
-    print("Test generation shape:", generated.shape)
-    print("Sample generated tokens:", token_ids_to_text(generated[0, -10:], tokenizer))
-
-
-def train_model_simple(model, train_loader, val_loader, optimizer, device, num_epochs, eval_freq, eval_iter, start_context, tokenizer):
-    """Training loop of NN"""
-    train_losses, val_losses, track_tokens_seen = [], [], []
-    tokens_seen, global_step = 0, -1
-
-    for epoch in range(num_epochs):
-        model.train()
-
-        # iterate through training batches 
-        for input_batch, target_batch in train_loader:
-            optimizer.zero_grad()
-            loss = calc_loss_batch(input_batch, target_batch, model, device)
-            loss.backward()
-            optimizer.step()
-
-            tokens_seen += input_batch.numel()
-            global_step += 1
-
-            # print losses based on eval_freq
-            if global_step % eval_freq == 0:
-                train_loss, val_loss = evaluate_model(model, train_loader, val_loader, device, eval_iter)
-                train_losses.append(train_loss)
-                val_losses.append(val_loss)
-                track_tokens_seen.append(tokens_seen)
-                print(f"Ep {epoch+1} (Step {global_step:06d}): Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
-
-        # generate new token predictions after each epoch 
-        generate_and_print_sample(model, tokenizer, device, start_context)
     
+    # Convert to text and print
+    generated_text = token_ids_to_text(generated, tokenizer)
+    print(f"Generated text:\n{generated_text}")
