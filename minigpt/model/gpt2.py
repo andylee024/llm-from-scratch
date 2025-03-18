@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from minigpt.model.components.transformer_block import LayerNorm, TransformerBlock
-from minigpt.utils.inference import generate_tokens, generate_with_prompt
+from minigpt.utils.inference import generate_tokens
 from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 
 
