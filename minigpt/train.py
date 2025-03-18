@@ -3,9 +3,10 @@
 import tiktoken
 import torch
 
+from minigpt.data.dataloaders import create_dataloader
+from minigpt.utils.evaluation import evaluate_dataset_loss
 from minigpt.model.gpt2 import GPTConfig, GPTModel, generate
 from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
-from minigpt.data.dataloaders import create_dataloader
 
 
 def setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, stride=256, train_ratio=0.85):
@@ -48,36 +49,66 @@ def setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, strid
 
 def run_training(model,
                  optimizer,
-                 data_loader,
-                 num_epochs):
+                 train_loader,
+                 validation_loader,
+                 num_epochs, 
+                 eval_freq):
+
+    train_losses, validation_losses = [], []
     
     for epoch_idx in range(num_epochs):
         model.train()
 
-        for x_batch, y_batch in data_loader:
+        for x_batch, y_batch in train_loader:
             optimizer.zero_grad()
             _, loss = model(x=x_batch, targets=y_batch)
             loss.backward()
             optimizer.step()
         
+        if epoch_idx % eval_freq == 0:
+            epoch_train_loss = evaluate_dataset_loss(train_loader, model)
+            epoch_validation_loss = evaluate_dataset_loss(validation_loader, model)
+
+            # Store the losses for tracking
+            train_losses.append(epoch_train_loss)
+            validation_losses.append(epoch_validation_loss)
+
+            # Print epoch training and validation losses
+            print(f"Evaluation {epoch_idx+1}, Train Loss: {epoch_train_loss:.4f}, Validation Loss: {epoch_validation_loss:.4f}")
+        
         # Print the loss for the epoch
         print(f"Epoch {epoch_idx+1}, Loss: {loss.item():.4f}")
 
 
-def generate_sample():
-    pass
+def generate_sample(model, x, max_new_tokens=100, block_size=25):
+
+    # iteratively generate new tokens (up to a limit)
+    for _ in range(max_new_tokens):
+
+        x_conditioned = x[:, -block_size:] 
+
+        with torch.no_grad():
+            logits, _ = model(x_conditioned)
+
+        # decode next token prediction
+        next_token_logits = logits[:, -1, :]
+        next_token_probabilities = torch.softmax(next_token_logits, dim=-1)
+        next_token_prediction = torch.argmax(next_token_probabilities, dim=-1, keepdim=True)
+        # next_token_prediction = torch.multinomial(next_token_probabilities, dim=-1, keepdim=True)
+
+        x = torch.cat((x_conditioned, next_token_prediction), dim=1)
+
+    return x
 
 
 if __name__ == "__main__":
 
     # data_path = "data/the-verdict.txt"
     data_path = "/Users/andylee/Projects/llm-from-scratch/data/the-verdict.txt"
-    gpt_config = GPTConfig(block_size=256)
 
-    # tokenizer
+    gpt_config = GPTConfig(block_size=256)
     tokenizer = tiktoken.get_encoding("gpt2")
 
-    # data loaders
     train_loader, validation_loader = setup_dataloaders(file_paths=[data_path],
                                                         tokenizer=tokenizer,
                                                         batch_size=4, 
@@ -85,15 +116,28 @@ if __name__ == "__main__":
                                                         stride=256,
                                                         train_ratio=0.85)
     
-    # model 
     model = GPTModel(gpt_config)
 
-    # optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=0.0004, 
         weight_decay=0.1
     )
 
-    run_training(model=model, optimizer=optimizer, data_loader=train_loader, num_epochs=4)
+    sample_pre_training = generate_sample(model, text_to_token_ids("hello, how's it going?", tokenizer))
+    run_training(
+        model=model,
+        optimizer=optimizer,
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        num_epochs=10,
+        eval_freq=5
+    )
+    sample_post_training = generate_sample(model, text_to_token_ids("hello, how's it going?", tokenizer))
 
+    # Convert token IDs back to text and print samples
+    print("Sample before training:")
+    print(token_ids_to_text(sample_pre_training[0], tokenizer))
+    
+    print("\nSample after training:")
+    print(token_ids_to_text(sample_post_training[0], tokenizer))
