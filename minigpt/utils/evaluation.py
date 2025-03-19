@@ -1,24 +1,29 @@
 import numpy as np
 import os
 import torch
+import wandb
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class TrainingState:
     """Class to track training state and metrics."""
     
-    def __init__(self, output_dir="/runs"):
+    def __init__(self, output_dir="/runs", use_wandb=True):
         
         self.metrics = {
             'train_loss': [],
-            'validation_loss': [],
+            'val_loss': [],
             'learning_rates': [],
             'epochs': []
         }
         
         # track best model
         self.best_val_loss = float('inf')
-        self.current_epoch = 0
+        self.best_epoch = 0
         self.output_dir = output_dir
+        self.use_wandb = use_wandb
         
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -29,7 +34,6 @@ class TrainingState:
         self.metrics['train_loss'].append(train_loss)
         self.metrics['val_loss'].append(val_loss)
         self.metrics['learning_rates'].append(learning_rate)
-        self.current_epoch = epoch
         
     def is_best_model(self, val_loss):
         """Check if current validation loss is best so far."""
@@ -38,12 +42,12 @@ class TrainingState:
             return True
         return False
     
-    def save_checkpoint(self, model, optimizer, is_best=False, use_wandb=False):
+    def save_checkpoint(self, epoch, model, optimizer, is_best=False):
         """Save model checkpoint."""
         checkpoint = {
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
-            'epoch': self.current_epoch,
+            'epoch': epoch,
             'best_val_loss': self.best_val_loss,
             'metrics': self.metrics,
         }
@@ -59,39 +63,50 @@ class TrainingState:
         print(f"Saved checkpoint to {checkpoint_path}")
         
         # Log to wandb if enabled
-        if use_wandb and is_best:
-            import wandb
+        if self.use_wandb and is_best:
             wandb.save(checkpoint_path)
         
         return checkpoint_path
     
-    def log_metrics(self, train_loss, val_loss, learning_rate, use_wandb=False):
-        """Log current metrics to console and optionally to wandb."""
-        # Print to console
-        print(f"Epoch {self.current_epoch}, "
+    def log_metrics(self, epoch, train_loss, val_loss, learning_rate):
+        print(f"Epoch {epoch}, "
               f"Train Loss: {train_loss:.4f}, "
               f"Val Loss: {val_loss:.4f}, "
               f"LR: {learning_rate:.6f}")
         
-        # Log to wandb if enabled
-        if use_wandb:
-            import wandb
+        if self.use_wandb:
             wandb.log({
                 "train_loss": train_loss,
                 "val_loss": val_loss,
                 "learning_rate": learning_rate,
-                "epoch": self.current_epoch
+                "epoch": epoch
             })
 
+    def init_wandb(self, project, entity, config, run_name):
+        entity = os.getenv("WANDB_ENTITY")
+        project = os.getenv("WANDB_PROJECT")
 
-def evaluate_batch_loss(x_batch, y_batch, model):
-    """Calculates loss for a single batch"""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    x_batch = x_batch.to(device)
-    y_batch = y_batch.to(device)
+        if wandb.run is None:  
+            self.use_wandb = True
+            wandb.init(
+                project=project,
+                entity=entity,
+                config=config,
+                name=run_name or f"run_{os.path.basename(self.output_dir)}",
+                dir=self.output_dir
+            )
+            print(f"Initialized wandb with project: {project}")
+            return True
 
-    _, loss = model(x_batch, y_batch)
-    return loss
+        else:
+            print("wandb already initialized")
+            return False
+    
+    def watch_model(self, model, log="gradients", log_freq=100):
+        """Set up model monitoring."""
+        if self.use_wandb:
+            wandb.watch(model, log=log, log_freq=log_freq)
+
 
 def evaluate_dataset_loss(data_loader, model, device):
     """Evaluate model on dataset and return average loss."""

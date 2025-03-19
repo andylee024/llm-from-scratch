@@ -1,50 +1,59 @@
 """An easy train.py for running model training"""
-
+import os
 import tiktoken
 import torch
-import wandb
+
+from datetime import datetime
+from dotenv import load_dotenv
 
 from minigpt.data.dataloaders import create_dataloader
-from minigpt.utils.evaluation import evaluate_dataset_loss
-from minigpt.model.gpt2 import create_gpt2_model 
+from minigpt.utils.evaluation import evaluate_dataset_loss, TrainingState
+from minigpt.model.gpt2 import create_gpt2_config, create_gpt2_model 
 from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 
+load_dotenv()
 
-
-def run_training(model,
-                 optimizer,
-                 train_loader,
-                 validation_loader,
-                 num_epochs, 
-                 eval_freq, 
-                 device):
-
-    train_losses, validation_losses = [], []
+def run_training(model, optimizer, train_loader, val_loader, num_epochs, 
+                 eval_freq, device, training_state):
     
     for epoch_idx in range(num_epochs):
-        model.train()
 
+        # train 
+        model.train()
+        epoch_total_loss = 0.
         for x_batch, y_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
+
             optimizer.zero_grad()
             _, loss = model(x=x_batch, targets=y_batch)
             loss.backward()
             optimizer.step()
-        
-        if epoch_idx % eval_freq == 0:
-            epoch_train_loss = evaluate_dataset_loss(train_loader, model)
-            epoch_validation_loss = evaluate_dataset_loss(validation_loader, model)
 
-            # Store the losses for tracking
-            train_losses.append(epoch_train_loss)
-            validation_losses.append(epoch_validation_loss)
-
-            # Print epoch training and validation losses
-            print(f"Evaluation {epoch_idx+1}, Train Loss: {epoch_train_loss:.4f}, Validation Loss: {epoch_validation_loss:.4f}")
+            epoch_total_loss += loss.item()
         
-        # Print the loss for the epoch
-        print(f"Epoch {epoch_idx+1}, Loss: {loss.item():.4f}")
+        
+        # evaluate 
+        should_evaluate = (epoch_idx % eval_freq == 0) or (epoch_idx == num_epochs - 1)
+        if should_evaluate: 
+
+            # gather metrics
+            train_loss = epoch_total_loss / len(train_loader)
+            val_loss = evaluate_dataset_loss(model=model, data_loader=val_loader, device=device)
+            lr = optimizer.param_groups[0]['lr']
+
+            # log metrics
+            training_state.update_metrics(epoch=epoch_idx, train_loss=train_loss, val_loss=val_loss, learning_rate=lr)
+            training_state.log_metrics(epoch=epoch_idx, train_loss=train_loss, val_loss=val_loss, learning_rate=lr)
+
+            # log best model 
+            if training_state.is_best_model(val_loss):
+                training_state.save_checkpoint(epoch=epoch_idx, model=model, optimizer=optimizer, is_best=True)
+    
+    # save final model
+    training_state.save_checkpoint(epoch=epoch_idx, model=model, optimizer=optimizer, is_best=False)
+    
+    return training_state
 
 
 def generate_sample(model, x, max_new_tokens=100, block_size=25):
@@ -105,67 +114,29 @@ def _setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, stri
     
     return train_loader, val_loader
 
-def _handle_evaluation(epoch_idx, train_loader, val_loader, model, optimizer, device, 
-                      avg_train_loss, best_val_loss, metrics, output_dir="/runs", use_wandb=False):
-    """Handle model evaluation, metrics logging, and checkpointing"""
-    # Evaluate model on validation set
-    model.eval()
-    val_loss = evaluate_dataset_loss(val_loader, model, device)
-    
-    # Store metrics
-    metrics['train_loss'].append(avg_train_loss)
-    metrics['val_loss'].append(val_loss)
-    metrics['learning_rates'].append(optimizer.param_groups[0]['lr'])
-    metrics['epochs'].append(epoch_idx)
-    
-    # Print metrics
-    print(f"Epoch {epoch_idx}, "
-          f"Train Loss: {avg_train_loss:.4f}, "
-          f"Val Loss: {val_loss:.4f}, "
-          f"LR: {optimizer.param_groups[0]['lr']:.6f}")
-    
-    # Log to wandb if enabled
-    if use_wandb:
-        wandb.log({
-            "train_loss": avg_train_loss,
-            "val_loss": val_loss,
-            "learning_rate": optimizer.param_groups[0]['lr'],
-            "epoch": epoch_idx
-        })
-    
-    # Handle checkpointing
-    is_best = val_loss < best_val_loss
-    best_val_loss = min(val_loss, best_val_loss)
-    
-    if is_best:
-        checkpoint = {
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch_idx,
-            'best_val_loss': best_val_loss,
-            'metrics': metrics,
-        }
-        
-        # Create output directory if it doesn't exist
-        import os
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Save checkpoint
-        checkpoint_path = os.path.join(output_dir, 'best_model.pt')
-        print(f"Saving best checkpoint to {checkpoint_path}")
-        torch.save(checkpoint, checkpoint_path)
-        
-        # Save to wandb if enabled
-        if use_wandb:
-            wandb.save(checkpoint_path)
-    
-    return best_val_loss, val_loss, metrics
-
 if __name__ == "__main__":
+
+    model_name = "gpt2-small"
 
     # set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
+
+    # set run directory
+    run_id = datetime.now().strftime("%Y%m%d_%H%M")
+    output_dir = f"./runs/{run_id}"
+
+    # set config
+    config = create_gpt2_config(model_name)
+
+    # load training state tracker
+    use_wandb = True  
+    training_state = TrainingState(output_dir=output_dir, use_wandb=use_wandb)
+    if use_wandb:
+        training_state.init_wandb(entity=os.getenv("WANDB_ENTITY"),
+                                  project=os.getenv("WANDB_PROJECT"),
+                                  config=config,
+                                  run_name=run_id)
 
     # load data 
     data_path = "data/the-verdict.txt"
@@ -173,7 +144,7 @@ if __name__ == "__main__":
     train_loader, validation_loader = _setup_dataloaders(file_paths=[data_path],
                                                          tokenizer=tokenizer,
                                                          batch_size=4, 
-                                                         max_length=256,
+                                                         max_length=256, 
                                                          stride=256,
                                                          train_ratio=0.85)
 
@@ -190,7 +161,6 @@ if __name__ == "__main__":
 
     # run training
     input_ids = text_to_token_ids("hello, how's it going?", tokenizer).to(device)
-    
     print("Sample before training:")
     sample_pre_training = generate_sample(model, input_ids)
     text_pre_training = token_ids_to_text(sample_pre_training[0], tokenizer)
@@ -200,10 +170,11 @@ if __name__ == "__main__":
         model=model,
         optimizer=optimizer,
         train_loader=train_loader,
-        validation_loader=validation_loader,
+        val_loader=validation_loader,
         num_epochs=1000,
         eval_freq=5,
-        device=device
+        device=device,
+        training_state=training_state
     )
 
     print("Sample post training:")
