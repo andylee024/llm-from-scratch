@@ -7,7 +7,9 @@ setup(
     install_requires=[          # Dependencies
         "torch>=1.10.0",
         "numpy>=1.21.0",
-        "tiktoken"
+        "tiktoken",
+        "wandb>=0.15.0",
+        "python-dotenv>=1.0.0"
     ],
     python_requires=">=3.8",    # Python version requirement
 )
