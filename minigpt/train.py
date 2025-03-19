@@ -7,9 +7,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from minigpt.data.dataloaders import create_dataloader
-from minigpt.utils.evaluation import evaluate_dataset_loss, TrainingState
+from minigpt.utils.evaluation import TrainingState, evaluate_dataset_loss, generate_sample
 from minigpt.model.gpt2 import create_gpt2_config, create_gpt2_model 
-from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 
 load_dotenv()
 
@@ -56,27 +55,6 @@ def run_training(model, optimizer, train_loader, val_loader, num_epochs,
     return training_state
 
 
-def generate_sample(model, x, max_new_tokens=100, block_size=25):
-
-    # iteratively generate new tokens (up to a limit)
-    for _ in range(max_new_tokens):
-
-        x_conditioned = x[:, -block_size:] 
-
-        with torch.no_grad():
-            logits, _ = model(x_conditioned)
-
-        # decode next token prediction
-        next_token_logits = logits[:, -1, :]
-        next_token_probabilities = torch.softmax(next_token_logits, dim=-1)
-        next_token_prediction = torch.argmax(next_token_probabilities, dim=-1, keepdim=True)
-        # next_token_prediction = torch.multinomial(next_token_probabilities, dim=-1, keepdim=True)
-
-        x = torch.cat((x_conditioned, next_token_prediction), dim=1)
-
-    return x
-
-
 def _setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, stride=256, train_ratio=0.85):
     """Create 2 dataloaders based on file paths for train and validation"""
     raw_text = ""
@@ -113,6 +91,7 @@ def _setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, stri
     )
     
     return train_loader, val_loader
+
 
 if __name__ == "__main__":
 
@@ -159,13 +138,18 @@ if __name__ == "__main__":
         weight_decay=0.1
     )
 
-    # run training
-    input_ids = text_to_token_ids("hello, how's it going?", tokenizer).to(device)
-    print("Sample before training:")
-    sample_pre_training = generate_sample(model, input_ids)
-    text_pre_training = token_ids_to_text(sample_pre_training[0], tokenizer)
-    print(f"sample_post_training : \n \n {text_pre_training}")
+    # Before training
+    prompt = "Hello, how's it going?"
+    generate_sample(
+        model=model,
+        prompt=prompt,
+        tokenizer=tokenizer,
+        device=device,
+        max_new_tokens=50,
+        print_result=True
+    )
 
+    # Run training
     run_training(
         model=model,
         optimizer=optimizer,
@@ -177,8 +161,13 @@ if __name__ == "__main__":
         training_state=training_state
     )
 
-    print("Sample post training:")
-    sample_post_training = generate_sample(model, input_ids)
-    text_post_training = token_ids_to_text(sample_post_training[0], tokenizer)
-    print(f"sample_post_training : \n \n {text_post_training}")
+    # After training
+    generate_sample(
+        model=model,
+        prompt=prompt,
+        tokenizer=tokenizer,
+        device=device,
+        max_new_tokens=50,
+        print_result=True
+    )
 

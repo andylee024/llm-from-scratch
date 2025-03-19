@@ -3,6 +3,8 @@ import os
 import torch
 import wandb
 
+from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -125,3 +127,37 @@ def evaluate_dataset_loss(data_loader, model, device):
             total_loss += loss.item()
     
     return total_loss / total_batches 
+
+
+def generate_sample(model, prompt, tokenizer, device, max_new_tokens=50, block_size=25, print_result=True):
+    """Generate text sample from a prompt and optionally print the result."""
+    # Convert prompt to token IDs
+    input_ids = text_to_token_ids(prompt, tokenizer).to(device)
+    
+    # Generate tokens
+    x = input_ids
+    for _ in range(max_new_tokens):
+        x_conditioned = x[:, -block_size:] 
+        
+        with torch.no_grad():
+            logits, _ = model(x_conditioned)
+            
+        # Decode next token prediction
+        next_token_logits = logits[:, -1, :]
+        next_token_probabilities = torch.softmax(next_token_logits, dim=-1)
+        next_token_prediction = torch.argmax(next_token_probabilities, dim=-1, keepdim=True)
+        # next_token_prediction = torch.multinomial(next_token_probabilities, dim=-1, keepdim=True)
+        
+        x = torch.cat((x_conditioned, next_token_prediction), dim=1)
+    
+    # Convert tokens back to text
+    generated_text = token_ids_to_text(x[0], tokenizer)
+    
+    # Print the result if requested
+    if print_result:
+        print(f"\n{'='*40}")
+        print(f"PROMPT: \"{prompt}\"")
+        print(f"GENERATED: \"{generated_text}\"")
+        print(f"{'='*40}\n")
+    
+    return generated_text
