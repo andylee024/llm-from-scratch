@@ -2,49 +2,13 @@
 
 import tiktoken
 import torch
+import wandb
 
 from minigpt.data.dataloaders import create_dataloader
 from minigpt.utils.evaluation import evaluate_dataset_loss
 from minigpt.model.gpt2 import create_gpt2_model 
 from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 
-
-def setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, stride=256, train_ratio=0.85):
-    """Create 2 dataloaders based on file paths for train and validation"""
-    raw_text = ""
-
-    # ingest data
-    for path in file_paths:
-        with open(path, 'r', encoding='utf-8') as f:
-            raw_text += f.read() + "\n \n"
-    
-    # create train and validation splits
-    split_idx = int(train_ratio * len(raw_text))
-    train_data = raw_text[:split_idx]
-    val_data = raw_text[split_idx:]
-
-    # instantiate loaders 
-    train_loader = create_dataloader(
-        txt=train_data,
-        tokenizer=tokenizer,
-        batch_size=batch_size,
-        max_length=max_length,
-        stride=stride,
-        shuffle=True,
-        drop_last=True
-    )
-    
-    val_loader = create_dataloader(
-        txt=val_data,
-        tokenizer=tokenizer,
-        batch_size=batch_size,
-        max_length=max_length,
-        stride=stride,
-        shuffle=False,
-        drop_last=False
-    )
-    
-    return train_loader, val_loader
 
 
 def run_training(model,
@@ -104,6 +68,99 @@ def generate_sample(model, x, max_new_tokens=100, block_size=25):
     return x
 
 
+def _setup_dataloaders(file_paths, tokenizer, batch_size=4, max_length=256, stride=256, train_ratio=0.85):
+    """Create 2 dataloaders based on file paths for train and validation"""
+    raw_text = ""
+
+    # ingest data
+    for path in file_paths:
+        with open(path, 'r', encoding='utf-8') as f:
+            raw_text += f.read() + "\n \n"
+    
+    # create train and validation splits
+    split_idx = int(train_ratio * len(raw_text))
+    train_data = raw_text[:split_idx]
+    val_data = raw_text[split_idx:]
+
+    # instantiate loaders 
+    train_loader = create_dataloader(
+        txt=train_data,
+        tokenizer=tokenizer,
+        batch_size=batch_size,
+        max_length=max_length,
+        stride=stride,
+        shuffle=True,
+        drop_last=True
+    )
+    
+    val_loader = create_dataloader(
+        txt=val_data,
+        tokenizer=tokenizer,
+        batch_size=batch_size,
+        max_length=max_length,
+        stride=stride,
+        shuffle=False,
+        drop_last=False
+    )
+    
+    return train_loader, val_loader
+
+def _handle_evaluation(epoch_idx, train_loader, val_loader, model, optimizer, device, 
+                      avg_train_loss, best_val_loss, metrics, output_dir="/runs", use_wandb=False):
+    """Handle model evaluation, metrics logging, and checkpointing"""
+    # Evaluate model on validation set
+    model.eval()
+    val_loss = evaluate_dataset_loss(val_loader, model, device)
+    
+    # Store metrics
+    metrics['train_loss'].append(avg_train_loss)
+    metrics['val_loss'].append(val_loss)
+    metrics['learning_rates'].append(optimizer.param_groups[0]['lr'])
+    metrics['epochs'].append(epoch_idx)
+    
+    # Print metrics
+    print(f"Epoch {epoch_idx}, "
+          f"Train Loss: {avg_train_loss:.4f}, "
+          f"Val Loss: {val_loss:.4f}, "
+          f"LR: {optimizer.param_groups[0]['lr']:.6f}")
+    
+    # Log to wandb if enabled
+    if use_wandb:
+        wandb.log({
+            "train_loss": avg_train_loss,
+            "val_loss": val_loss,
+            "learning_rate": optimizer.param_groups[0]['lr'],
+            "epoch": epoch_idx
+        })
+    
+    # Handle checkpointing
+    is_best = val_loss < best_val_loss
+    best_val_loss = min(val_loss, best_val_loss)
+    
+    if is_best:
+        checkpoint = {
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'epoch': epoch_idx,
+            'best_val_loss': best_val_loss,
+            'metrics': metrics,
+        }
+        
+        # Create output directory if it doesn't exist
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save checkpoint
+        checkpoint_path = os.path.join(output_dir, 'best_model.pt')
+        print(f"Saving best checkpoint to {checkpoint_path}")
+        torch.save(checkpoint, checkpoint_path)
+        
+        # Save to wandb if enabled
+        if use_wandb:
+            wandb.save(checkpoint_path)
+    
+    return best_val_loss, val_loss, metrics
+
 if __name__ == "__main__":
 
     # set device
@@ -113,12 +170,12 @@ if __name__ == "__main__":
     # load data 
     data_path = "data/the-verdict.txt"
     tokenizer = tiktoken.get_encoding("gpt2")
-    train_loader, validation_loader = setup_dataloaders(file_paths=[data_path],
-                                                        tokenizer=tokenizer,
-                                                        batch_size=4, 
-                                                        max_length=256,
-                                                        stride=256,
-                                                        train_ratio=0.85)
+    train_loader, validation_loader = _setup_dataloaders(file_paths=[data_path],
+                                                         tokenizer=tokenizer,
+                                                         batch_size=4, 
+                                                         max_length=256,
+                                                         stride=256,
+                                                         train_ratio=0.85)
 
     # load model
     model = create_gpt2_model("gpt2-small")
@@ -153,3 +210,4 @@ if __name__ == "__main__":
     sample_post_training = generate_sample(model, input_ids)
     text_post_training = token_ids_to_text(sample_post_training[0], tokenizer)
     print(f"sample_post_training : \n \n {text_post_training}")
+
