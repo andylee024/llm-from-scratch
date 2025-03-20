@@ -129,7 +129,7 @@ def evaluate_dataset_loss(data_loader, model, device):
     return total_loss / total_batches 
 
 
-def generate_sample(model, prompt, tokenizer, device, max_new_tokens=50, block_size=25, print_result=True):
+def generate_sample(epoch, model, prompt, tokenizer, device, max_new_tokens=50, block_size=25, print_result=True):
     """Generate text sample from a prompt and optionally print the result."""
     # Convert prompt to token IDs
     input_ids = text_to_token_ids(prompt, tokenizer).to(device)
@@ -156,8 +156,9 @@ def generate_sample(model, prompt, tokenizer, device, max_new_tokens=50, block_s
     # Print the result if requested
     if print_result:
         print(f"\n{'='*40}")
-        print(f"PROMPT: \"{prompt}\"")
-        print(f"GENERATED: \"{generated_text}\"")
+        print(f"Epoch: {epoch}")
+        print(f"Prompt: \"{prompt}\"")
+        print(f"Model Output: \"{generated_text}\"")
         print(f"{'='*40}\n")
     
     return generated_text

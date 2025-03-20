@@ -34,6 +34,7 @@ def run_training(model, optimizer, train_loader, val_loader, num_epochs,
         
         # evaluate 
         should_evaluate = (epoch_idx % eval_freq == 0) or (epoch_idx == num_epochs - 1)
+        evaluation_prompt = "Hello, how's it going?"
         if should_evaluate: 
 
             # gather metrics
@@ -48,7 +49,18 @@ def run_training(model, optimizer, train_loader, val_loader, num_epochs,
             # log best model 
             if training_state.is_best_model(val_loss):
                 training_state.save_checkpoint(epoch=epoch_idx, model=model, optimizer=optimizer, is_best=True)
-    
+
+            # see model output 
+            generate_sample(
+                epoch=epoch_idx,
+                model=model,
+                prompt=evaluation_prompt,
+                tokenizer=tokenizer,
+                device=device,
+                max_new_tokens=50,
+                print_result=True
+            )
+
     # save final model
     training_state.save_checkpoint(epoch=epoch_idx, model=model, optimizer=optimizer, is_best=False)
     
@@ -108,7 +120,7 @@ if __name__ == "__main__":
     # set config
     config = create_gpt2_config(model_name)
 
-    # load training state tracker
+    # track model training
     use_wandb = True  
     training_state = TrainingState(output_dir=output_dir, use_wandb=use_wandb)
     if use_wandb:
@@ -128,7 +140,7 @@ if __name__ == "__main__":
                                                          train_ratio=0.85)
 
     # load model
-    model = create_gpt2_model("gpt2-small")
+    model = create_gpt2_model(model_name)
     model.to(device)
 
     # load optimizer
@@ -138,36 +150,14 @@ if __name__ == "__main__":
         weight_decay=0.1
     )
 
-    # Before training
-    prompt = "Hello, how's it going?"
-    generate_sample(
-        model=model,
-        prompt=prompt,
-        tokenizer=tokenizer,
-        device=device,
-        max_new_tokens=50,
-        print_result=True
-    )
-
-    # Run training
+    # train model
     run_training(
         model=model,
         optimizer=optimizer,
         train_loader=train_loader,
         val_loader=validation_loader,
-        num_epochs=1000,
+        num_epochs=20,
         eval_freq=5,
         device=device,
         training_state=training_state
     )
-
-    # After training
-    generate_sample(
-        model=model,
-        prompt=prompt,
-        tokenizer=tokenizer,
-        device=device,
-        max_new_tokens=50,
-        print_result=True
-    )
-
