@@ -130,9 +130,10 @@ if __name__ == "__main__":
                                   run_name=run_id)
 
     # load data 
-    data_path = "data/the-verdict.txt"
+    p1 = "data/the-verdict.txt"
+    p2 = "data/shakespeare/input.txt"
     tokenizer = tiktoken.get_encoding("gpt2")
-    train_loader, validation_loader = _setup_dataloaders(file_paths=[data_path],
+    train_loader, validation_loader = _setup_dataloaders(file_paths=[p1, p2],
                                                          tokenizer=tokenizer,
                                                          batch_size=4, 
                                                          max_length=256, 
