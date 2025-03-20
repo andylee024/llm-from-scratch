@@ -57,7 +57,7 @@ class TrainingState:
         if is_best:
             filename = 'best_model.pt'
         else:
-            filename = f'epoch_{self.current_epoch}.pt'
+            filename = f'epoch_{epoch}.pt'
         
         # Save checkpoint
         checkpoint_path = os.path.join(self.output_dir, filename)
