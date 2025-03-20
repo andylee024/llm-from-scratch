@@ -7,8 +7,7 @@ from minigpt.utils.inference import generate_tokens
 from minigpt.utils.tokenization import text_to_token_ids, token_ids_to_text
 
 
-def create_gpt2_model(model_type):
-    """Factory function to get GPT configuration for different model sizes."""
+def create_gpt2_config(model_type):
     configs = {
         'gpt2-small': dict(n_layer=12, n_head=12, n_embd=768, block_size=1024, vocab_size=50257, dropout=0.1, bias=True),  # 124M params
         'gpt2-medium': dict(n_layer=24, n_head=16, n_embd=1024, block_size=1024, vocab_size=50257, dropout=0.1, bias=True),  # 350M params
@@ -18,8 +17,14 @@ def create_gpt2_model(model_type):
     
     if model_type not in configs:
         raise ValueError(f"Model type {model_type} not found. Available types: {list(configs.keys())}")
-    
-    return GPTModel(GPTConfig(**configs[model_type]))
+
+    return configs[model_type]
+
+
+def create_gpt2_model(model_type):
+    """Factory function to get GPT configuration for different model sizes."""
+    config =  create_gpt2_config(model_type)
+    return GPTModel(GPTConfig(**config))
     
 
 class GPTConfig:
