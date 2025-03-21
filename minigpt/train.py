@@ -64,7 +64,7 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
     print(f"Iteration {iter_num}/{max_iters} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Best Val Loss: {training_state.best_val_loss:.4f}")
     return val_loss
 
-def _run_training_step_w_grad_accumulation(model, optimizer, dataset, device, training_args, scaler):
+def _run_training_step_w_grad_accumulation(model, optimizer, dataset, training_args, scaler):
     """Execute a training step with gradient accumulation"""
     # get configuration
     batch_size = training_args.get('batch_size', 8)
@@ -98,7 +98,7 @@ def _run_training_step_w_grad_accumulation(model, optimizer, dataset, device, tr
     
     return total_loss 
 
-def _run_training_step_simple(model, optimizer, dataset, device, training_args):
+def _run_training_step_simple(model, optimizer, dataset, training_args):
     """Execute a single training step without gradient accumulation
     
     Args:
@@ -115,12 +115,11 @@ def _run_training_step_simple(model, optimizer, dataset, device, training_args):
     # get configuration
     batch_size = training_args.get('batch_size', 8)
     block_size = training_args.get('block_size', 256)
-    device_type = 'cuda' if device.type == 'cuda' else 'cpu'
+    device = training_args.get('device', 'cpu')
     
     x_batch, y_batch = dataset.get_random_batch(
         batch_size=batch_size, 
         block_size=block_size, 
-        device_type=device_type, 
         device=device
     )
     
@@ -132,12 +131,13 @@ def _run_training_step_simple(model, optimizer, dataset, device, training_args):
     return loss.item()
 
 
-def run_training(model, optimizer, train_dataset, val_dataset, device, training_state, 
+def run_training(model, optimizer, train_dataset, val_dataset, training_state, 
                 training_args, scaler, tokenizer=None):
     """Training function using BinaryDataset with iteration-based training."""
     # get training variables
     max_iters = training_args.get('max_iters', 2000)
     eval_freq = training_args.get('eval_freq', 100)
+    device = training_args.get('device', 'cpu')
 
     iter_num = 0
     running_loss = 0.0
@@ -147,17 +147,29 @@ def run_training(model, optimizer, train_dataset, val_dataset, device, training_
     model.train()
     for iter_num in tqdm(range(max_iters), desc="Training"):
 
-        # Execute training step
-        loss = _run_training_step_w_grad_accumulation(
-            model=model,
-            optimizer=optimizer,
-            dataset=train_dataset,
-            device=device,
-            training_args=training_args,
-            scaler=scaler
-        )
-        
-        # Update running loss
+        loss = 0.0
+        if device == "cuda":
+            # Execute training step
+            loss = _run_training_step_w_grad_accumulation(
+                model=model,
+                optimizer=optimizer,
+                dataset=train_dataset,
+                training_args=training_args,
+                scaler=scaler
+            )
+
+        elif device == "cpu":
+            loss = _run_training_step_simple(
+                model=model,
+                optimizer=optimizer,
+                dataset=train_dataset,
+                training_args=training_args
+            )
+
+        else:
+            raise ValueError(f"Unsupported device: {device}. Use 'cuda' or 'cpu'.")
+
+        # update running loss
         running_loss += loss
         running_iters += 1
         
@@ -216,10 +228,14 @@ if __name__ == "__main__":
     model_config = create_gpt2_config(model_name)
     
     # System
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    dtype = 'bfloat16' if torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-
+    device = 'cpu'
+    amp_ctx = nullcontext()
+    if torch.cuda.is_available():
+        device = 'cuda'
+        dtype = 'bfloat16' if torch.cuda.is_bf16_supported() else 'float32' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+        amp_ctx = torch.amp.autocast(device_type=device, dtype=ptdtype)
+    print(f"Using device : {device}")
 
     # Set training args
     training_args = {
@@ -227,24 +243,20 @@ if __name__ == "__main__":
         'weight_decay': 0.1,
         'max_iters': 1,       # Maximum number of training iterations
         'eval_freq': 1,        # Evaluate every N iterations
-        'eval_iters': 1,
+        'eval_iters': 1,        # Number of batches to use for each eval 
         'batch_size': 4,         # Batch size for training
         'block_size': model_config['block_size'],       # Context length for the model
         'gradient_accumulation_steps' : 5, # number of gradients accumulated per batch
-        'evaluation_prompt': "Hello, how's it going?",
+        'evaluation_prompt': "Hello, how's it going?", # same prompt used on each eval
         'use_wandb': True,
         'device': device,
-        'amp_context': nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=ptdtype)
+        'amp_ctx': amp_ctx
     }
     
     # Set data binaries
     train_bin = "data/shakespeare/train.bin"
     val_bin = "data/shakespeare/val.bin"
     
-    # Set device
-    device = torch.device(training_args['device'])
-    print(f"Using device: {device}")
-
     # Setup run directory
     run_id = datetime.now().strftime("%Y%m%d_%H%M")
     output_dir = f"./runs/{run_id}"
@@ -277,8 +289,8 @@ if __name__ == "__main__":
         weight_decay=training_args['weight_decay']
     )
 
-    # Training optimizations
-    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+    # Training optimizations 
+    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16')) if device == "cuda" else None
 
     # Run training
     run_training(
@@ -286,7 +298,6 @@ if __name__ == "__main__":
         optimizer=optimizer,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
-        device=device,
         training_state=training_state,
         training_args=training_args,
         tokenizer=tokenizer,
