@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from minigpt.data.datasets import BinaryDataset
 from minigpt.model.gpt2 import create_gpt2_config, create_gpt2_model 
-from minigpt.utils.evaluation import TrainingState, evaluate_dataset_loss, generate_sample
+from minigpt.utils.evaluation import TrainingState, generate_sample
 
 load_dotenv()
 
@@ -19,10 +19,9 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
     """Evaluate model on validation data and handle logging, checkpointing, and sample generation"""
     batch_size = training_args.get('batch_size', 8)
     block_size = training_args.get('block_size', 256)
+    device = training_args.get('device', 'cpu')
     evaluation_prompt = training_args.get('evaluation_prompt', "Hello, how's it going?")
     eval_iters = training_args.get('eval_iters', 20)
-    device_type = 'cuda' if device.type == 'cuda' else 'cpu'
-    lr = optimizer.param_groups[0]['lr']
 
     # get validation loss 
     model.eval()
@@ -32,7 +31,6 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
             val_x, val_y = val_dataset.get_random_batch(
                 batch_size=batch_size,
                 block_size=block_size,
-                device_type=device_type,
                 device=device
             )
             _, val_loss = model(x=val_x, targets=val_y)
@@ -40,6 +38,7 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
         val_loss = sum(val_losses) / len(val_losses)
 
     # log model metrics 
+    lr = optimizer.param_groups[0]['lr']
     training_state.update_metrics(iter=iter_num, train_loss=train_loss, val_loss=val_loss, learning_rate=lr)
     training_state.log_metrics(iter=iter_num, train_loss=train_loss, val_loss=val_loss, learning_rate=lr)
 
