@@ -69,15 +69,14 @@ def _run_training_step_w_grad_accumulation(model, optimizer, dataset, training_a
     batch_size = training_args.get('batch_size', 8)
     block_size = training_args.get('block_size', 256)
     grad_accum_steps = training_args.get('gradient_accumulation_steps', 1)
-    device_type = 'cuda' if device.type == 'cuda' else 'cpu'
+    device = training_args.get('device', 'cpu')
     amp_context = training_args.get('amp_context', nullcontext())
 
     total_loss = 0.0
-    for _ in range(grad_accum_steps):
+    for _ in tqdm(range(grad_accum_steps), desc="Gradient Accumulation"):
         x_batch, y_batch = dataset.get_random_batch(
             batch_size=batch_size, 
             block_size=block_size, 
-            device_type=device_type, 
             device=device
         )
         
@@ -89,7 +88,6 @@ def _run_training_step_w_grad_accumulation(model, optimizer, dataset, training_a
         # backward pass
         scaler.scale(loss).backward()
         total_loss += loss.item()
-    
     # optimizer step (after gradient accumulation)
     scaler.step(optimizer)
     scaler.update()
