@@ -19,7 +19,7 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
     batch_size = training_args.get('batch_size', 8)
     block_size = training_args.get('block_size', 256)
     evaluation_prompt = training_args.get('evaluation_prompt', "Hello, how's it going?")
-    val_batches = training_args.get('val_batches', 10)
+    eval_iters = training_args.get('eval_iters', 20)
     device_type = 'cuda' if device.type == 'cuda' else 'cpu'
     lr = optimizer.param_groups[0]['lr']
 
@@ -27,7 +27,7 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
     model.eval()
     with torch.no_grad():
         val_losses = []
-        for _ in range(val_batches):  
+        for _ in tqdm(range(eval_iters), desc="eval iter progress"):  
             val_x, val_y = val_dataset.get_random_batch(
                 batch_size=batch_size,
                 block_size=block_size,
@@ -36,7 +36,6 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
             )
             _, val_loss = model(x=val_x, targets=val_y)
             val_losses.append(val_loss.item())
-        
         val_loss = sum(val_losses) / len(val_losses)
 
     # log model metrics 
@@ -61,7 +60,7 @@ def evaluate_model(model, val_dataset, training_state, device, iter_num, optimiz
         )
     
     # Print progress
-    print(f"Iteration {iter_num}/{max_iters} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+    print(f"Iteration {iter_num}/{max_iters} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Best Val Loss: {training_state.best_val_loss:.4f}")
     return val_loss
 
 
@@ -158,11 +157,11 @@ if __name__ == "__main__":
         'learning_rate': 0.0004,
         'weight_decay': 0.1,
         'max_iters': 2000,       # Maximum number of training iterations
-        'eval_freq': 100,        # Evaluate every N iterations
-        'batch_size': 8,         # Batch size for training
+        'eval_freq': 200,        # Evaluate every N iterations
+        'eval_iters': 50,
+        'batch_size': 34,         # Batch size for training
         'block_size': model_config['block_size'],       # Context length for the model
         'evaluation_prompt': "Hello, how's it going?",
-        'val_batches': 10,
         'use_wandb': True,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu'  # Add device type here
     }
