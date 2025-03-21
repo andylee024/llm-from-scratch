@@ -37,7 +37,8 @@ class BinaryDataset(Dataset):
         return x, y
 
 
-class GPTDataset(Dataset):
+class TextDataset(Dataset):
+    """Implementation of dataset object that handles text files"""
     def __init__(self, text, tokenizer, max_length, stride):
         self.max_length = max_length
         self.stride = stride
