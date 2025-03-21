@@ -18,21 +18,21 @@ class TrainingState:
             'train_loss': [],
             'val_loss': [],
             'learning_rates': [],
-            'epochs': []
+            'iterations': []
         }
         
         # track best model
         self.best_val_loss = float('inf')
-        self.best_epoch = 0
+        self.best_iter = 0
         self.output_dir = output_dir
         self.use_wandb = use_wandb
         
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
     
-    def update_metrics(self, epoch, train_loss, val_loss, learning_rate):
+    def update_metrics(self, iter, train_loss, val_loss, learning_rate):
         """Update metrics with latest values."""
-        self.metrics['epochs'].append(epoch)
+        self.metrics['iterations'].append(iter)
         self.metrics['train_loss'].append(train_loss)
         self.metrics['val_loss'].append(val_loss)
         self.metrics['learning_rates'].append(learning_rate)
@@ -44,12 +44,12 @@ class TrainingState:
             return True
         return False
     
-    def save_checkpoint(self, epoch, model, optimizer, is_best=False):
+    def save_checkpoint(self, iter, model, optimizer, is_best=False):
         """Save model checkpoint."""
         checkpoint = {
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
-            'epoch': epoch,
+            'iteration': iter,
             'best_val_loss': self.best_val_loss,
             'metrics': self.metrics,
         }
@@ -57,7 +57,7 @@ class TrainingState:
         if is_best:
             filename = 'best_model.pt'
         else:
-            filename = f'epoch_{epoch}.pt'
+            filename = f'iter_{iter}.pt'
         
         # Save checkpoint
         checkpoint_path = os.path.join(self.output_dir, filename)
@@ -70,8 +70,8 @@ class TrainingState:
         
         return checkpoint_path
     
-    def log_metrics(self, epoch, train_loss, val_loss, learning_rate):
-        print(f"Epoch {epoch}, "
+    def log_metrics(self, iter, train_loss, val_loss, learning_rate):
+        print(f"Iteration {iter}, "
               f"Train Loss: {train_loss:.4f}, "
               f"Val Loss: {val_loss:.4f}, "
               f"LR: {learning_rate:.6f}")
@@ -81,7 +81,7 @@ class TrainingState:
                 "train_loss": train_loss,
                 "val_loss": val_loss,
                 "learning_rate": learning_rate,
-                "epoch": epoch
+                "iteration": iter
             })
 
     def init_wandb(self, project, entity, config, run_name):
@@ -129,7 +129,7 @@ def evaluate_dataset_loss(data_loader, model, device):
     return total_loss / total_batches 
 
 
-def generate_sample(epoch, model, prompt, tokenizer, device, max_new_tokens=50, block_size=25, print_result=True):
+def generate_sample(iter, model, prompt, tokenizer, device, max_new_tokens=50, block_size=25, print_result=True):
     """Generate text sample from a prompt and optionally print the result."""
     # Convert prompt to token IDs
     input_ids = text_to_token_ids(prompt, tokenizer).to(device)
@@ -156,7 +156,7 @@ def generate_sample(epoch, model, prompt, tokenizer, device, max_new_tokens=50, 
     # Print the result if requested
     if print_result:
         print(f"\n{'='*40}")
-        print(f"Epoch: {epoch}")
+        print(f"Iteration: {iter}")
         print(f"Prompt: \"{prompt}\"")
         print(f"Model Output: \"{generated_text}\"")
         print(f"{'='*40}\n")
